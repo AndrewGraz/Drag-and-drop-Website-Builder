@@ -5,7 +5,8 @@
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "concurrently \"vite\" \"tsc -p tsconfig.main.json --watch\" \"wait-on http://localhost:5173 && electron .\"",
-    "build": "vite build && tsc -p tsconfig.main.json",
+    "build": "npm run build:runner && vite build && tsc -p tsconfig.main.json",
+    "build:runner": "npm --prefix runner run build",
     "start": "electron .",
     "package": "npm run build && electron-builder",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.main.json --noEmit"
@@ -37,5 +38,5 @@
     "vite": "^6.2.2",
     "wait-on": "^8.0.2"
   },
-  "build": { "appId": "com.formforge.desktop", "productName": "FormForge", "files": ["dist/**/*", "package.json"] }
+  "build": { "appId": "com.formforge.desktop", "productName": "FormForge", "files": ["dist/**/*", "package.json"], "extraResources": [{ "from": "runner/dist/mac", "to": "runner" }] }
 }

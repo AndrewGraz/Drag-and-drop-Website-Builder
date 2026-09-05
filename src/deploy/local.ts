@@ -1,10 +1,40 @@
+import { app } from 'electron';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Form } from '../shared/types';
+
+const runnerName = 'FormForge Form Runner.app';
+
+function runnerTemplate(): string {
+  const packagedTemplate = path.join(process.resourcesPath, 'runner', runnerName);
+  const developmentTemplate = path.resolve(__dirname, '../../runner/dist/mac', runnerName);
+  const template = app.isPackaged ? packagedTemplate : developmentTemplate;
+  if (!fs.existsSync(template)) {
+    throw new Error(`The local runner template is missing. Build it first with \"npm --prefix runner run build\". Expected: ${template}`);
+  }
+  return template;
+}
+
+/** Creates a self-contained, double-clickable macOS form application. */
 export function deployLocal(form: Form, downloads: string) {
-  const directory = path.join(downloads, `${form.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'form'}-local`);
-  fs.mkdirSync(directory, { recursive: true }); fs.writeFileSync(path.join(directory, 'form.json'), JSON.stringify(form, null, 2));
-  fs.writeFileSync(path.join(directory, 'server.js'), `const express=require('express'),Database=require('better-sqlite3'),form=require('./form.json');const app=express(),db=new Database('submissions.db');db.exec('CREATE TABLE IF NOT EXISTS submissions (id INTEGER PRIMARY KEY, created_at TEXT, data TEXT)');app.use(express.urlencoded({extended:true}));app.get('/',(_,res)=>res.send('<h1>'+form.name+'</h1><form method="post">'+form.fields.map(f=>'<label>'+f.label+(f.required?' *':'')+'</label>'+(['textarea'].includes(f.type)?'<textarea name="'+f.id+'"></textarea>':f.type==='select'?'<select name="'+f.id+'">'+(f.options||[]).map(o=>'<option>'+o+'</option>').join('')+'</select>':'<input name="'+f.id+'" type="'+(f.type==='number'||f.type==='date'||f.type==='file'?f.type:'text')+'">').join('<br>')+'<br><button>Submit</button></form>'));app.post('/',(req,res)=>{db.prepare('INSERT INTO submissions(created_at,data) VALUES (?,?)').run(new Date().toISOString(),JSON.stringify(req.body));res.send('<h1>Thank you!</h1>')});app.get('/export.csv',(_,res)=>{const rows=db.prepare('SELECT * FROM submissions').all();res.type('text/csv').send('id,created_at,data\\n'+rows.map(r=>r.id+','+r.created_at+',"'+String(r.data).replace(/"/g,'""')+'"').join('\\n'))});app.listen(3000,()=>console.log('Open http://localhost:3000'))`);
-  fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({ private: true, dependencies: { express: '^4.21.2', 'better-sqlite3': '^11.8.1' } }, null, 2));
-  fs.writeFileSync(path.join(directory, 'README.txt'), 'Run: npm install\nThen: node server.js\nOpen http://localhost:3000. Submissions are stored in submissions.db and exportable from /export.csv.'); return { url: `file://${directory}` };
+  if (process.platform !== 'darwin') {
+    throw new Error('Local app deployment currently produces a macOS .app. Build the runner on macOS before deploying.');
+  }
+  const safeName = form.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'FormForge-Form';
+  const destination = path.join(downloads, `${safeName}.app`);
+  fs.rmSync(destination, { recursive: true, force: true });
+  fs.cpSync(runnerTemplate(), destination, { recursive: true });
+
+  const resources = path.join(destination, 'Contents', 'Resources');
+  fs.writeFileSync(path.join(resources, 'form.json'), JSON.stringify(form, null, 2));
+  fs.writeFileSync(path.join(destination, 'Contents', 'Info.plist'), fs.readFileSync(path.join(destination, 'Contents', 'Info.plist'), 'utf8').replace(/<key>CFBundleDisplayName<\/key>\s*<string>[^<]*<\/string>/, `<key>CFBundleDisplayName</key><string>${safeName}</string>`));
+
+  try {
+    execFileSync('codesign', ['--deep', '--force', '--sign', '-', destination], { stdio: 'pipe' });
+  } catch (error) {
+    fs.rmSync(destination, { recursive: true, force: true });
+    throw new Error(`Could not ad-hoc sign the generated app: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return { path: destination };
 }
