@@ -1,0 +1,25 @@
+{
+  "name": "formforge-runner",
+  "version": "0.1.0",
+  "private": true,
+  "main": "main.js",
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "scripts": {
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "build": "electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.formforge.runner",
+    "productName": "FormForge Form Runner",
+    "files": ["main.js", "server.js", "node_modules/**/*"],
+    "mac": { "target": ["dir"], "identity": null }
+  }
+}
